@@ -1,82 +1,116 @@
-// ESP32 Web Server Code
 #include <WiFi.h>
-#include <WebServer.h>
 
-const char* ssid = "ESP32_AP";
-const char* password = "12345678";
+// Wi-Fi Access Point Credentials
+const char *ssid = "ESP32_Hotspot";  
+const char *password = "12345678";   
 
-WebServer server(80);
+WiFiServer server(80); // Web server runs on port 80
+const int relayPin = 5; // GPIO pin for relay
 
-String webpage = "<!DOCTYPE html>\n"
-"<html>\n"
-"<head>\n"
-"  <title>ESP32 Bulb Control</title>\n"
-"  <style>\n"
-"    body { font-family: Arial; text-align: center; }\n"
-"    button { padding: 10px 20px; margin: 10px; font-size: 16px; }\n"
-"  </style>\n"
-"</head>\n"
-"<body>\n"
-"  <h1>ESP32 Bulb Control</h1>\n"
-"  <button onclick=\"fetch('/ON')\">Turn ON</button>\n"
-"  <button onclick=\"fetch('/OFF')\">Turn OFF</button>\n"
-"  <button onclick=\"fetch('/BLINK')\">Blink</button>\n"
-"  <button onclick=\"setTimer()\">Set Timer</button>\n"
-"  <input type='number' id='timer' placeholder='Enter seconds'>\n"
-"  <script>\n"
-"    function setTimer() {\n"
-"      let seconds = document.getElementById('timer').value;\n"
-"      fetch('/TIMER?value=' + seconds);\n"
-"    }\n"
-"  </script>\n"
-"</body>\n"
-"</html>";
-
-void handleRoot() {
-  server.send(200, "text/html", webpage);
-}
-
-void handleOn() {
-  digitalWrite(2, HIGH);
-  server.send(200, "text/plain", "Bulb ON");
-}
-
-void handleOff() {
-  digitalWrite(2, LOW);
-  server.send(200, "text/plain", "Bulb OFF");
-}
-
-void handleBlink() {
-  for (int i = 0; i < 5; i++) {
-    digitalWrite(2, HIGH);
-    delay(500);
-    digitalWrite(2, LOW);
-    delay(500);
-  }
-  server.send(200, "text/plain", "Blinking Done");
-}
-
-void handleTimer() {
-  String value = server.arg("value");
-  int seconds = value.toInt();
-  digitalWrite(2, HIGH);
-  delay(seconds * 1000);
-  digitalWrite(2, LOW);
-  server.send(200, "text/plain", "Bulb turned off after " + value + " seconds");
-}
+bool blinkState = false;
+bool blinkMode = false;
+unsigned long previousMillis = 0;
+int blinkInterval = 500; // Default blink interval in milliseconds
 
 void setup() {
   Serial.begin(115200);
+  pinMode(relayPin, OUTPUT);
+  digitalWrite(relayPin, LOW); // Bulb OFF initially
+
+  // Start ESP32 in Access Point (AP) Mode
   WiFi.softAP(ssid, password);
-  server.on("/", handleRoot);
-  server.on("/ON", handleOn);
-  server.on("/OFF", handleOff);
-  server.on("/BLINK", handleBlink);
-  server.on("/TIMER", handleTimer);
-  server.begin();
-  pinMode(2, OUTPUT);
+  Serial.println("WiFi AP Mode Started");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.softAPIP()); // Print ESP32 IP Address
+
+  server.begin(); // Start web server
 }
 
 void loop() {
-  server.handleClient();
+  WiFiClient client = server.available(); // Check for incoming connections
+
+  if (client) {
+    Serial.println("Client Connected.");
+    String request = client.readStringUntil('\r'); // Read request
+    Serial.println(request);
+    client.flush();
+
+    // Control Relay
+    if (request.indexOf("/ON") != -1) {
+      digitalWrite(relayPin, HIGH);
+      blinkMode = false;
+    } 
+    else if (request.indexOf("/OFF") != -1) {
+      digitalWrite(relayPin, LOW);
+      blinkMode = false;
+    }
+    else if (request.indexOf("/SETTIMER?time=") != -1) {
+      int startIndex = request.indexOf("=") + 1;
+      int endIndex = request.indexOf(" ", startIndex);
+      String timeString = request.substring(startIndex, endIndex);
+      int timeDelay = timeString.toInt() * 1000; // Convert seconds to milliseconds
+      digitalWrite(relayPin, HIGH);
+      delay(timeDelay);
+      digitalWrite(relayPin, LOW);
+    }
+    else if (request.indexOf("/BLINK?interval=") != -1) {
+      int startIndex = request.indexOf("=") + 1;
+      int endIndex = request.indexOf(" ", startIndex);
+      String intervalString = request.substring(startIndex, endIndex);
+      blinkInterval = intervalString.toInt();
+      blinkMode = true;
+    }
+
+    // Send Webpage Response with UI
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-type:text/html");
+    client.println();
+    client.println("<html><head><title>ESP32 Web Control</title>");
+    client.println("<style>");
+    client.println("body { text-align: center; font-family: Arial; margin: 50px; }");
+    client.println(".button { padding: 15px 30px; font-size: 20px; margin: 10px; border: none; cursor: pointer; }");
+    client.println(".on { background-color: green; color: white; }");
+    client.println(".off { background-color: red; color: white; }");
+    client.println(".blink { background-color: blue; color: white; }");
+    client.println("</style></head><body>");
+    client.println("<h1>ESP32 Web Server</h1>");
+    client.println("<button class='button on' onclick='sendRequest(\"/ON\")'>Turn ON</button>");
+    client.println("<button class='button off' onclick='sendRequest(\"/OFF\")'>Turn OFF</button>");
+    client.println("<br><br>");
+    client.println("<input type='number' id='timerInput' placeholder='Enter seconds' min='1'>");
+    client.println("<button class='button' onclick='setTimer()'>Set Timer</button>");
+    client.println("<br><br>");
+    client.println("<input type='number' id='blinkInput' placeholder='Blink interval (ms)' min='100'>");
+    client.println("<button class='button blink' onclick='setBlink()'>Blink</button>");
+    client.println("<br><br>");
+    client.println("<script>");
+    client.println("function sendRequest(path) {");
+    client.println("  var xhttp = new XMLHttpRequest();");
+    client.println("  xhttp.open('GET', path, true);");
+    client.println("  xhttp.send();");
+    client.println("}");
+    client.println("function setTimer() {");
+    client.println("  var time = document.getElementById('timerInput').value;");
+    client.println("  sendRequest('/SETTIMER?time=' + time);");
+    client.println("}");
+    client.println("function setBlink() {");
+    client.println("  var interval = document.getElementById('blinkInput').value;");
+    client.println("  sendRequest('/BLINK?interval=' + interval);");
+    client.println("}");
+    client.println("</script></body></html>");
+    client.println();
+
+    client.stop(); // Close connection
+    Serial.println("Client Disconnected.");
+  }
+
+  // Blink Logic
+  if (blinkMode) {
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= blinkInterval) {
+      previousMillis = currentMillis;
+      blinkState = !blinkState;
+      digitalWrite(relayPin, blinkState ? HIGH : LOW);
+    }
+  }
 }
