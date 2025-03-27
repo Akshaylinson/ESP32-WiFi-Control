@@ -14,7 +14,7 @@ Key Features:-
 
 How It Works:-
 The ESP32 creates a WiFi hotspot, and users connect their mobile or PC to it.
-A simple web interface (HTML/CSS) is hosted on the ESP32 at http://192.168.4.1.
+A simple web interface (HTML/CSS) is hosted on the ESP32 at web server.
 Users can press ON/OFF buttons to control the relay module connected to ESP32.
 The Kodular app has a Web Viewer that loads the same interface for mobile use.
 A status label shows "Connected" if ESP32 responds, else "Not Connected".
