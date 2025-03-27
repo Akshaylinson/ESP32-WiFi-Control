@@ -5,7 +5,7 @@ This project enables users to control an ESP32 relay switch through a web-based 
 
 Key Features:-
 ✅ ESP32 in AP Mode – No external WiFi required, works locally.
-✅ Web-Based Control – Users can access http://192.168.4.1 from a browser to control the relay.
+✅ Web-Based Control – Users can access from a browser to control the relay.
 ✅ Kodular Mobile App – A custom-built app with a Web Viewer to control the relay.
 ✅ Real-Time Status Monitoring – Displays whether the ESP32 is Connected or Not Connected.
 ✅ WhatsApp Support Integration – Users can contact software support via a WhatsApp link.
